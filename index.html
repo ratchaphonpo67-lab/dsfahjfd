@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telemetry & Analytics Studio — Live Sheet Monitor</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['IBM Plex Sans Thai', 'Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Google Fonts: IBM Plex Sans Thai & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'IBM Plex Sans Thai', 'Inter', sans-serif;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .font-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        /* Subtle dot grid texture */
+        .bg-dot-light {
+            background-color: #faf9f6;
+            background-image: radial-gradient(#d6d3d1 0.85px, transparent 0.85px);
+            background-size: 20px 20px;
+        }
+        .dark .bg-dot-dark {
+            background-color: #0c0a09;
+            background-image: radial-gradient(#292524 0.85px, transparent 0.85px);
+            background-size: 20px 20px;
+        }
+        /* Circular SVG Gauge Transition */
+        .gauge-ring {
+            transition: stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #a8a29e;
+            border-radius: 9999px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #44403c;
+        }
+    </style>
+</head>
+<body class="bg-dot-light dark:bg-dot-dark text-stone-800 dark:text-stone-100 min-h-screen flex flex-col lg:flex-row antialiased overflow-x-hidden">
+
+    <!-- Mobile Top Bar -->
+    <div class="lg:hidden sticky top-0 z-30 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-4 py-3 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-9 h-9 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <i data-lucide="activity" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+                <h1 class="text-sm font-bold tracking-tight truncate">Telemetry Studio #2</h1>
+                <p class="text-[11px] text-stone-500 dark:text-stone-400 truncate">เชื่อมต่อ Google Sheet สด</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="fetchSheetData()" class="p-2.5 rounded-xl bg-violet-600 text-white active:scale-95 transition-transform" aria-label="รีเฟรช">
+                <i data-lucide="rotate-cw" id="refreshIconMobile" class="w-4 h-4"></i>
+            </button>
+            <button onclick="toggleMobileDrawer()" class="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 active:scale-95 transition-transform" aria-label="ตั้งค่าคอลัมน์">
+                <i data-lucide="sliders" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Left Command Sidebar (Desktop Fixed / Mobile Slide-over) -->
+    <aside id="sidebarDrawer" class="fixed inset-y-0 left-0 z-40 w-72 bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 transform -translate-x-full lg:translate-x-0 lg:static lg:shrink-0 transition-transform duration-300 flex flex-col justify-between p-5 overflow-y-auto">
+        <div class="space-y-6">
+            <!-- Brand Header -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-violet-500/20">
+                        <i data-lucide="activity" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">Workspace 02</span>
+                        <h1 class="text-base font-bold text-stone-900 dark:text-white leading-tight">Telemetry Studio</h1>
+                    </div>
+                </div>
+                <button onclick="toggleMobileDrawer()" class="lg:hidden p-1.5 rounded-lg text-stone-400 hover:text-stone-700 dark:hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Live Connection Pill -->
+            <div class="p-3.5 rounded-2xl bg-stone-50 dark:bg-stone-800/70 border border-stone-200/80 dark:border-stone-700/70 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        ซิงค์ข้อมูลอัตโนมัติ
+                    </span>
+                    <span id="sidebarLastTime" class="font-num text-[11px] text-stone-400">--:--</span>
+                </div>
+                <p class="text-[11px] text-stone-500 dark:text-stone-400 truncate font-mono" id="sidebarSheetIdLabel">ID: 1_JDRdOOm...mixxw</p>
+            </div>
+
+            <!-- Day Selection (Vertical Radio Style) -->
+            <div class="space-y-2">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-stone-400">เลือกวันย้อนหลัง (เฉพาะวันนั้น)</label>
+                <div class="grid grid-cols-2 lg:grid-cols-1 gap-1.5">
+                    <button onclick="setDayOffset(0)" id="sideDay0" class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-violet-600 text-white shadow-sm transition-all">
+                        <span>วันนี้</span>
+                        <i data-lucide="calendar-check" class="w-3.5 h-3.5 opacity-80"></i>
+                    </button>
+                    <button onclick="setDayOffset(1)" id="sideDay1" class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all">
+                        <span>เมื่อวาน</span>
+                        <span class="text-[10px] opacity-60">-1d</span>
+                    </button>
+                    <button onclick="setDayOffset(2)" id="sideDay2" class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all">
+                        <span>2 วันก่อน</span>
+                        <span class="text-[10px] opacity-60">-2d</span>
+                    </button>
+                    <button onclick="setDayOffset(3)" id="sideDay3" class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all">
+                        <span>3 วันก่อน</span>
+                        <span class="text-[10px] opacity-60">-3d</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Column Mapping Controls -->
+            <div class="space-y-2.5 pt-2 border-t border-stone-200/80 dark:border-stone-800">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-stone-400">จับคู่คอลัมน์ข้อมูล</label>
+                <div class="space-y-2 text-xs">
+                    <div>
+                        <span class="block text-[11px] text-stone-500 mb-1">แกนเวลา / วันที่</span>
+                        <select id="timeColSelect" onchange="recalculateAndRender()" class="w-full bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl px-3 py-2 text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-2 focus:ring-violet-500"></select>
+                    </div>
+                    <div>
+                        <span class="block text-[11px] text-violet-600 dark:text-violet-400 font-medium mb-1">ค่าหลักที่ 1 (เช่น อุณหภูมิ)</span>
+                        <select id="metric1Select" onchange="recalculateAndRender()" class="w-full bg-violet-50/60 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/60 rounded-xl px-3 py-2 text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-2 focus:ring-violet-500"></select>
+                    </div>
+                    <div>
+                        <span class="block text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mb-1">ค่าหลักที่ 2 (เช่น ความชื้น)</span>
+                        <select id="metric2Select" onchange="recalculateAndRender()" class="w-full bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl px-3 py-2 text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"></select>
+                    </div>
+                    <div>
+                        <span class="block text-[11px] text-orange-600 dark:text-orange-400 font-medium mb-1">ค่าหลักที่ 3 (เสริม / คำนวณ)</span>
+                        <select id="metric3Select" onchange="recalculateAndRender()" class="w-full bg-orange-50/60 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 rounded-xl px-3 py-2 text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-2 focus:ring-orange-500"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Sidebar Actions -->
+        <div class="pt-4 mt-6 border-t border-stone-200/80 dark:border-stone-800 space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="openConfigModal()" class="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors">
+                    <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                    <span>เปลี่ยนชีต</span>
+                </button>
+                <button onclick="fetchSheetData()" class="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium bg-stone-900 dark:bg-violet-600 text-white hover:opacity-90 transition-opacity">
+                    <i data-lucide="rotate-cw" id="refreshIconDesktop" class="w-3.5 h-3.5"></i>
+                    <span>ซิงค์สด</span>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Backdrop for mobile drawer -->
+    <div id="drawerBackdrop" onclick="toggleMobileDrawer()" class="fixed inset-0 bg-stone-950/50 backdrop-blur-xs z-30 hidden lg:hidden"></div>
+
+    <!-- Main Workspace Canvas -->
+    <main class="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6">
+
+        <!-- Top Editorial Header Banner -->
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-stone-200/80 dark:border-stone-800">
+            <div>
+                <div class="flex items-center gap-2 text-xs font-semibold text-violet-600 dark:text-violet-400 mb-1">
+                    <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                    <span id="activeDateBadge">กำลังแสดงข้อมูล: วันนี้</span>
+                </div>
+                <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-white">ภาพรวมสถิติและแนวโน้มรายวัน</h2>
+            </div>
+
+            <!-- Top-Right Controls: Chart Mode & Day/Night Toggle -->
+            <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <div class="inline-flex items-center rounded-xl bg-white dark:bg-stone-900 p-1 border border-stone-200 dark:border-stone-800 shadow-2xs">
+                    <button onclick="setChartMode('split')" id="btnModeSplit" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white transition-all">แยกกราฟ 2 แกน</button>
+                    <button onclick="setChartMode('bar')" id="btnModeBar" class="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-all">กราฟแท่งเปรียบเทียบ</button>
+                </div>
+
+                <button onclick="toggleTheme()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 shadow-2xs transition-colors" aria-label="สลับโหมดกลางวันกลางคืน">
+                    <i data-lucide="moon" id="themeIconTop" class="w-4 h-4 text-violet-600 dark:text-amber-400"></i>
+                    <span id="themeTextTop">โหมดกลางคืน</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Alert / Error Banner -->
+        <div id="statusBanner" class="hidden rounded-2xl p-4 border text-xs sm:text-sm"></div>
+
+        <!-- Loading Skeleton -->
+        <div id="loadingState" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="h-36 rounded-2xl bg-white/80 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-800 animate-pulse"></div>
+                <div class="h-36 rounded-2xl bg-white/80 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-800 animate-pulse"></div>
+                <div class="h-36 rounded-2xl bg-white/80 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-800 animate-pulse"></div>
+            </div>
+            <div class="h-80 rounded-2xl bg-white/80 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-800 animate-pulse"></div>
+        </div>
+
+        <!-- Loaded Dashboard Content -->
+        <div id="dashboardContent" class="hidden space-y-6">
+
+            <!-- Top Row: 3 Circular Radial Gauge Cards (Distinct from first dashboard) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+                
+                <!-- Gauge Card 1 -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-stone-200/90 dark:border-stone-800 shadow-2xs flex items-center justify-between gap-4">
+                    <div class="space-y-1.5 min-w-0">
+                        <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300" id="labelMetric1">METRIC 01</span>
+                        <div class="flex items-baseline gap-1.5">
+                            <span id="valMetric1" class="font-num text-3xl font-bold text-stone-900 dark:text-white">--.-</span>
+                            <span id="unitMetric1" class="text-xs font-semibold text-violet-600 dark:text-violet-400">°C</span>
+                        </div>
+                        <p id="statsMetric1" class="text-[11px] text-stone-500 dark:text-stone-400 truncate">ต่ำสุด -- • สูงสุด --</p>
+                    </div>
+                    <!-- SVG Radial Ring -->
+                    <div class="relative w-16 h-16 shrink-0 flex items-center justify-center">
+                        <svg class="w-16 h-16" viewBox="0 0 64 64">
+                            <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" stroke-width="6" class="text-stone-100 dark:text-stone-800" />
+                            <circle id="ringMetric1" cx="32" cy="32" r="26" fill="none" stroke="#7c3aed" stroke-width="6" stroke-linecap="round" stroke-dasharray="163.36" stroke-dashoffset="163.36" class="gauge-ring" />
+                        </svg>
+                        <i data-lucide="thermometer" class="w-4 h-4 text-violet-600 dark:text-violet-400 absolute"></i>
+                    </div>
+                </div>
+
+                <!-- Gauge Card 2 -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-stone-200/90 dark:border-stone-800 shadow-2xs flex items-center justify-between gap-4">
+                    <div class="space-y-1.5 min-w-0">
+                        <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300" id="labelMetric2">METRIC 02</span>
+                        <div class="flex items-baseline gap-1.5">
+                            <span id="valMetric2" class="font-num text-3xl font-bold text-stone-900 dark:text-white">--.-</span>
+                            <span id="unitMetric2" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">%</span>
+                        </div>
+                        <p id="statsMetric2" class="text-[11px] text-stone-500 dark:text-stone-400 truncate">ต่ำสุด -- • สูงสุด --</p>
+                    </div>
+                    <!-- SVG Radial Ring -->
+                    <div class="relative w-16 h-16 shrink-0 flex items-center justify-center">
+                        <svg class="w-16 h-16" viewBox="0 0 64 64">
+                            <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" stroke-width="6" class="text-stone-100 dark:text-stone-800" />
+                            <circle id="ringMetric2" cx="32" cy="32" r="26" fill="none" stroke="#10b981" stroke-width="6" stroke-linecap="round" stroke-dasharray="163.36" stroke-dashoffset="163.36" class="gauge-ring" />
+                        </svg>
+                        <i data-lucide="droplets" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 absolute"></i>
+                    </div>
+                </div>
+
+                <!-- Gauge Card 3 -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-stone-200/90 dark:border-stone-800 shadow-2xs flex items-center justify-between gap-4">
+                    <div class="space-y-1.5 min-w-0">
+                        <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300" id="labelMetric3">METRIC 03</span>
+                        <div class="flex items-baseline gap-1.5">
+                            <span id="valMetric3" class="font-num text-3xl font-bold text-stone-900 dark:text-white">--.-</span>
+                            <span id="unitMetric3" class="text-xs font-semibold text-orange-600 dark:text-orange-400">IDX</span>
+                        </div>
+                        <p id="statsMetric3" class="text-[11px] text-stone-500 dark:text-stone-400 truncate">ค่าเฉลี่ย -- • ทั้งวัน</p>
+                    </div>
+                    <!-- SVG Radial Ring -->
+                    <div class="relative w-16 h-16 shrink-0 flex items-center justify-center">
+                        <svg class="w-16 h-16" viewBox="0 0 64 64">
+                            <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" stroke-width="6" class="text-stone-100 dark:text-stone-800" />
+                            <circle id="ringMetric3" cx="32" cy="32" r="26" fill="none" stroke="#f97316" stroke-width="6" stroke-linecap="round" stroke-dasharray="163.36" stroke-dashoffset="163.36" class="gauge-ring" />
+                        </svg>
+                        <i data-lucide="gauge" class="w-4 h-4 text-orange-600 dark:text-orange-400 absolute"></i>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Middle Row: Split Dual-Panel Charts (Instead of single merged chart) -->
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+                
+                <!-- Chart Panel A: Primary Metric -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-stone-200/90 dark:border-stone-800 shadow-2xs">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 id="chart1Title" class="text-sm font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-xs bg-violet-600"></span>
+                                กราฟแนวโน้มค่าที่ 1
+                            </h3>
+                            <p class="text-[11px] text-stone-400 mt-0.5">แสดงข้อมูลทั้งวันของวันที่เลือก</p>
+                        </div>
+                        <span id="chart1Badge" class="font-num text-xs font-semibold px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300">--</span>
+                    </div>
+                    <div class="relative h-[220px] sm:h-[250px] w-full">
+                        <canvas id="primaryChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart Panel B: Secondary Metric -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-stone-200/90 dark:border-stone-800 shadow-2xs">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 id="chart2Title" class="text-sm font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-xs bg-emerald-500"></span>
+                                กราฟแนวโน้มค่าที่ 2
+                            </h3>
+                            <p class="text-[11px] text-stone-400 mt-0.5">เปรียบเทียบช่วงเวลาเดียวกันทั้งวัน</p>
+                        </div>
+                        <span id="chart2Badge" class="font-num text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">--</span>
+                    </div>
+                    <div class="relative h-[220px] sm:h-[250px] w-full">
+                        <canvas id="secondaryChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom Row: Full-Day Data Ledger Table -->
+            <div class="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/90 dark:border-stone-800 shadow-2xs overflow-hidden">
+                <div class="p-4 sm:p-5 border-b border-stone-100 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 id="tableHeading" class="text-sm sm:text-base font-bold text-stone-900 dark:text-white">ตารางข้อมูลทั้งหมดของวัน</h3>
+                            <span class="px-2 py-0.5 text-[10px] font-semibold bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300 rounded-md">ล่าสุดอยู่บนสุด</span>
+                        </div>
+                        <p id="tableSubtext" class="text-xs text-stone-500 dark:text-stone-400 mt-0.5">ทั้งหมด 0 รายการ</p>
+                    </div>
+
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <div class="relative flex-1 sm:w-60">
+                            <i data-lucide="search" class="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                            <input type="text" id="searchInput" oninput="filterTable()" placeholder="ค้นหาในตาราง..." class="w-full pl-9 pr-3 py-2 text-xs bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500">
+                        </div>
+                        <button onclick="exportCSV()" class="px-3.5 py-2 text-xs font-semibold bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 rounded-xl flex items-center gap-1.5 shrink-0 transition-colors">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                            <span>CSV</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto max-h-[430px]">
+                    <table class="w-full text-left border-collapse">
+                        <thead id="tableHead" class="bg-stone-50/95 dark:bg-stone-800/95 backdrop-blur sticky top-0 z-10 border-b border-stone-200 dark:border-stone-700 text-[11px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider"></thead>
+                        <tbody id="tableBody" class="divide-y divide-stone-100 dark:divide-stone-800/80 text-xs sm:text-sm text-stone-700 dark:text-stone-300"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Config Modal -->
+    <div id="configModal" class="fixed inset-0 bg-stone-950/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-stone-900 rounded-2xl max-w-md w-full p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
+                <h3 class="text-base font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                    <i data-lucide="database" class="w-4 h-4 text-violet-600"></i>
+                    ตั้งค่าแหล่งข้อมูล Google Sheet
+                </h3>
+                <button onclick="closeConfigModal()" class="text-stone-400 hover:text-stone-700 dark:hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-stone-700 dark:text-stone-300 mb-1">Google Sheet URL หรือ ID</label>
+                    <input type="text" id="sheetUrlInput" class="w-full px-3 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500">
+                </div>
+                <div>
+                    <label class="block font-semibold text-stone-700 dark:text-stone-300 mb-1">ชื่อแท็บ (Sheet Name) - เว้นว่างเพื่อดึงแท็บแรก</label>
+                    <input type="text" id="sheetNameInput" class="w-full px-3 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="เช่น Sheet1">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeConfigModal()" class="px-4 py-2 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl">ยกเลิก</button>
+                <button onclick="saveConfigAndFetch()" class="px-4 py-2 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-xl">บันทึกและซิงค์</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Configuration for the 2nd Google Sheet
+        let config = {
+            sheetUrl: 'https://docs.google.com/spreadsheets/d/1_JDRdOOm779X-HGra8cLu3zKkcvonJbgSnb6T1mixxw/edit?usp=sharing',
+            sheetId: '1_JDRdOOm779X-HGra8cLu3zKkcvonJbgSnb6T1mixxw',
+            sheetName: ''
+        };
+
+        let dailyBuckets = {};
+        let referenceLatestDate = null;
+        let rawData = [];
+        let filteredData = [];
+        let headers = [];
+        let selectedDayOffset = 0;
+        let chartMode = 'split'; // 'split' (line+area) or 'bar'
+        let primaryChartInstance = null;
+        let secondaryChartInstance = null;
+
+        // Theme Management
+        function initTheme() {
+            const saved = localStorage.getItem('studio2Theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (saved === 'dark' || (!saved && prefersDark)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+            updateThemeUI();
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('studio2Theme', isDark ? 'dark' : 'light');
+            updateThemeUI();
+            if (rawData.length > 0) renderCharts();
+        }
+
+        function updateThemeUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const iconName = isDark ? 'sun' : 'moon';
+            const tIcon = document.getElementById('themeIconTop');
+            const tText = document.getElementById('themeTextTop');
+            if (tIcon) tIcon.setAttribute('data-lucide', iconName);
+            if (tText) tText.textContent = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+            lucide.createIcons();
+        }
+
+        function toggleMobileDrawer() {
+            const drawer = document.getElementById('sidebarDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            const isClosed = drawer.classList.contains('-translate-x-full');
+            if (isClosed) {
+                drawer.classList.remove('-translate-x-full');
+                backdrop.classList.remove('hidden');
+            } else {
+                drawer.classList.add('-translate-x-full');
+                backdrop.classList.add('hidden');
+            }
+        }
+
+        function extractSheetId(input) {
+            const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            return match ? match[1] : input.trim();
+        }
+
+        // Date Parsers (Supports Thai Buddhist Year & ISO/DMY formats)
+        function parseRowDate(str) {
+            if (!str) return null;
+            const s = String(str).trim();
+            const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+            if (dmy) {
+                const day = parseInt(dmy[1], 10);
+                const month = parseInt(dmy[2], 10) - 1;
+                let year = parseInt(dmy[3], 10);
+                if (year > 2400) year -= 543;
+                const d = new Date(year, month, day);
+                if (!isNaN(d.getTime())) return d;
+            }
+            const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+            if (ymd) {
+                let year = parseInt(ymd[1], 10);
+                if (year > 2400) year -= 543;
+                const month = parseInt(ymd[2], 10) - 1;
+                const day = parseInt(ymd[3], 10);
+                const d = new Date(year, month, day);
+                if (!isNaN(d.getTime())) return d;
+            }
+            const parsed = new Date(s);
+            return isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function formatDateKey(d) {
+            if (!d || isNaN(d.getTime())) return null;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function formatThaiDate(d) {
+            if (!d || isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function parseNum(val) {
+            if (val === null || val === undefined || val === '') return NaN;
+            return parseFloat(String(val).replace(/[^0-9.-]+/g, ''));
+        }
+
+        function showBanner(type, msg) {
+            const el = document.getElementById('statusBanner');
+            if (!msg) {
+                el.classList.add('hidden');
+                return;
+            }
+            el.classList.remove('hidden');
+            el.className = type === 'error'
+                ? 'rounded-2xl p-4 border bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-200 text-xs sm:text-sm flex items-center gap-2.5'
+                : 'rounded-2xl p-4 border bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-200 text-xs sm:text-sm flex items-center gap-2.5';
+            el.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-triangle' : 'check-circle'}" class="w-4 h-4 shrink-0"></i><span>${msg}</span>`;
+            lucide.createIcons();
+        }
+
+        // Fetch Google Sheet CSV
+        function fetchSheetData() {
+            ['refreshIconDesktop', 'refreshIconMobile'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('animate-spin');
+            });
+            showBanner(null, '');
+
+            const sheetQuery = config.sheetName ? `&sheet=${encodeURIComponent(config.sheetName)}` : '';
+            const csvUrl = `https://docs.google.com/spreadsheets/d/${config.sheetId}/gviz/tq?tqx=out:csv${sheetQuery}&_=${Date.now()}`;
+
+            Papa.parse(csvUrl, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    ['refreshIconDesktop', 'refreshIconMobile'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.classList.remove('animate-spin');
+                    });
+                    if (!results.data || results.data.length === 0) {
+                        showBanner('error', 'ไม่พบข้อมูลใน Google Sheet หรือไฟล์ยังไม่ได้เปิดสิทธิ์แชร์เป็น "ทุกคนที่มีลิงก์"');
+                        document.getElementById('loadingState').classList.add('hidden');
+                        return;
+                    }
+                    processData(results.data, results.meta.fields || Object.keys(results.data[0]));
+                },
+                error: function() {
+                    ['refreshIconDesktop', 'refreshIconMobile'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.classList.remove('animate-spin');
+                    });
+                    showBanner('error', 'ไม่สามารถดึงข้อมูลจาก Google Sheet ได้ กรุณาตรวจสอบสิทธิ์การแชร์ลิงก์');
+                    document.getElementById('loadingState').classList.add('hidden');
+                }
+            });
+        }
+
+        function processData(rows, fields) {
+            headers = fields.filter(h => h && h.trim() !== '');
+            const cleanRows = rows.filter(r => headers.some(h => r[h] !== undefined && String(r[h]).trim() !== ''));
+
+            if (cleanRows.length === 0) {
+                showBanner('error', 'ไม่พบแถวข้อมูลที่ใช้งานได้');
+                return;
+            }
+
+            // Detect columns automatically
+            const timeCol = headers.find(h => /time|date|stamp|เวลา|วันที่/i.test(h)) || headers[0];
+            const numericCols = headers.filter(h => h !== timeCol && !isNaN(parseNum(cleanRows[cleanRows.length - 1][h])));
+
+            const m1 = numericCols[0] || headers[1] || headers[0];
+            const m2 = numericCols[1] || headers[2] || m1;
+            const m3 = numericCols[2] || '__AVG_M1__';
+
+            populateSelect('timeColSelect', headers, timeCol);
+            populateSelect('metric1Select', headers, m1);
+            populateSelect('metric2Select', headers, m2);
+            populateSelect('metric3Select', ['__AVG_M1__', ...headers], m3);
+
+            // Group rows strictly per calendar day
+            dailyBuckets = {};
+            let maxDate = null;
+
+            cleanRows.forEach(r => {
+                const dObj = parseRowDate(r[timeCol]);
+                const key = formatDateKey(dObj) || 'NO_DATE';
+                if (!dailyBuckets[key]) dailyBuckets[key] = [];
+                dailyBuckets[key].push(r);
+                if (dObj && (!maxDate || dObj > maxDate)) maxDate = dObj;
+            });
+
+            referenceLatestDate = maxDate || new Date();
+            setDayOffset(selectedDayOffset);
+
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('dashboardContent').classList.remove('hidden');
+        }
+
+        function populateSelect(id, opts, selected) {
+            const el = document.getElementById(id);
+            el.innerHTML = opts.map(o => {
+                const label = o === '__AVG_M1__' ? 'ค่าเฉลี่ยสะสมทั้งวัน' : o;
+                return `<option value="${o}" ${o === selected ? 'selected' : ''}>${label}</option>`;
+            }).join('');
+        }
+
+        function setDayOffset(offset) {
+            selectedDayOffset = offset;
+            const labels = ['วันนี้', 'เมื่อวาน', '2 วันก่อน', '3 วันก่อน'];
+
+            [0, 1, 2, 3].forEach(d => {
+                const btn = document.getElementById(`sideDay${d}`);
+                if (!btn) return;
+                if (d === offset) {
+                    btn.className = 'flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-violet-600 text-white shadow-sm transition-all';
+                } else {
+                    btn.className = 'flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all';
+                }
+            });
+
+            const targetDate = new Date(referenceLatestDate.getTime());
+            targetDate.setDate(targetDate.getDate() - offset);
+            const targetKey = formatDateKey(targetDate);
+            const thaiStr = formatThaiDate(targetDate);
+
+            document.getElementById('activeDateBadge').textContent = `กำลังแสดงข้อมูล: ${labels[offset]} (${thaiStr})`;
+            document.getElementById('tableHeading').textContent = `ตารางข้อมูลทั้งหมด — ${labels[offset]} (${thaiStr})`;
+
+            if (dailyBuckets[targetKey]) {
+                rawData = [...dailyBuckets[targetKey]];
+            } else if (dailyBuckets['NO_DATE'] && offset === 0) {
+                rawData = [...dailyBuckets['NO_DATE']];
+            } else {
+                rawData = [];
+            }
+
+            document.getElementById('searchInput').value = '';
+            filteredData = [...rawData].reverse();
+
+            recalculateAndRender();
+            renderTable();
+        }
+
+        function setChartMode(mode) {
+            chartMode = mode;
+            const splitBtn = document.getElementById('btnModeSplit');
+            const barBtn = document.getElementById('btnModeBar');
+            if (mode === 'split') {
+                splitBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white transition-all';
+                barBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-all';
+            } else {
+                barBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white transition-all';
+                splitBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-all';
+            }
+            renderCharts();
+        }
+
+        function setGaugeProgress(circleId, percent) {
+            const circle = document.getElementById(circleId);
+            if (!circle) return;
+            const circumference = 163.36;
+            const clamped = Math.min(100, Math.max(4, percent));
+            circle.style.strokeDashoffset = circumference - (clamped / 100) * circumference;
+        }
+
+        function recalculateAndRender() {
+            const timeCol = document.getElementById('timeColSelect').value;
+            const col1 = document.getElementById('metric1Select').value;
+            const col2 = document.getElementById('metric2Select').value;
+            const col3 = document.getElementById('metric3Select').value;
+
+            document.getElementById('labelMetric1').textContent = col1;
+            document.getElementById('labelMetric2').textContent = col2;
+            document.getElementById('labelMetric3').textContent = col3 === '__AVG_M1__' ? `เฉลี่ย (${col1})` : col3;
+
+            document.getElementById('chart1Title').innerHTML = `<span class="w-2.5 h-2.5 rounded-xs bg-violet-600"></span> ${col1}`;
+            document.getElementById('chart2Title').innerHTML = `<span class="w-2.5 h-2.5 rounded-xs bg-emerald-500"></span> ${col2}`;
+
+            if (rawData.length === 0) {
+                ['valMetric1', 'valMetric2', 'valMetric3'].forEach(id => document.getElementById(id).textContent = '--.-');
+                setGaugeProgress('ringMetric1', 0);
+                setGaugeProgress('ringMetric2', 0);
+                setGaugeProgress('ringMetric3', 0);
+                renderCharts();
+                return;
+            }
+
+            const vals1 = rawData.map(r => parseNum(r[col1])).filter(v => !isNaN(v));
+            const vals2 = rawData.map(r => parseNum(r[col2])).filter(v => !isNaN(v));
+            const latest = rawData[rawData.length - 1];
+
+            const v1 = parseNum(latest[col1]);
+            const v2 = parseNum(latest[col2]);
+
+            // Metric 1
+            if (!isNaN(v1) && vals1.length > 0) {
+                const min1 = Math.min(...vals1);
+                const max1 = Math.max(...vals1);
+                document.getElementById('valMetric1').textContent = v1.toFixed(1);
+                document.getElementById('statsMetric1').textContent = `ต่ำสุด ${min1.toFixed(1)} • สูงสุด ${max1.toFixed(1)}`;
+                document.getElementById('chart1Badge').textContent = `ล่าสุด ${v1.toFixed(1)}`;
+                const pct1 = max1 === min1 ? 65 : ((v1 - min1) / (max1 - min1)) * 80 + 15;
+                setGaugeProgress('ringMetric1', pct1);
+            }
+
+            // Metric 2
+            if (!isNaN(v2) && vals2.length > 0) {
+                const min2 = Math.min(...vals2);
+                const max2 = Math.max(...vals2);
+                document.getElementById('valMetric2').textContent = v2.toFixed(1);
+                document.getElementById('statsMetric2').textContent = `ต่ำสุด ${min2.toFixed(1)} • สูงสุด ${max2.toFixed(1)}`;
+                document.getElementById('chart2Badge').textContent = `ล่าสุด ${v2.toFixed(1)}`;
+                const pct2 = max2 === min2 ? 65 : ((v2 - min2) / (max2 - min2)) * 80 + 15;
+                setGaugeProgress('ringMetric2', pct2);
+            }
+
+            // Metric 3
+            if (col3 === '__AVG_M1__' && vals1.length > 0) {
+                const avg1 = vals1.reduce((a, b) => a + b, 0) / vals1.length;
+                document.getElementById('valMetric3').textContent = avg1.toFixed(1);
+                document.getElementById('unitMetric3').textContent = 'AVG';
+                document.getElementById('statsMetric3').textContent = `คำนวณจาก ${vals1.length} รายการทั้งวัน`;
+                setGaugeProgress('ringMetric3', 72);
+            } else {
+                const vals3 = rawData.map(r => parseNum(r[col3])).filter(v => !isNaN(v));
+                const v3 = parseNum(latest[col3]);
+                if (!isNaN(v3) && vals3.length > 0) {
+                    const min3 = Math.min(...vals3);
+                    const max3 = Math.max(...vals3);
+                    document.getElementById('valMetric3').textContent = v3.toFixed(1);
+                    document.getElementById('unitMetric3').textContent = 'VAL';
+                    document.getElementById('statsMetric3').textContent = `ต่ำสุด ${min3.toFixed(1)} • สูงสุด ${max3.toFixed(1)}`;
+                    const pct3 = max3 === min3 ? 65 : ((v3 - min3) / (max3 - min3)) * 80 + 15;
+                    setGaugeProgress('ringMetric3', pct3);
+                }
+            }
+
+            const rawTime = String(latest[timeCol] || '');
+            const shortTime = rawTime.includes(' ') ? rawTime.split(' ').pop().slice(0, 5) : rawTime;
+            document.getElementById('sidebarLastTime').textContent = shortTime || '--:--';
+
+            renderCharts();
+        }
+
+        function renderCharts() {
+            const timeCol = document.getElementById('timeColSelect').value;
+            const col1 = document.getElementById('metric1Select').value;
+            const col2 = document.getElementById('metric2Select').value;
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const isMobile = window.innerWidth < 640;
+            const textColor = isDark ? '#a8a29e' : '#78716c';
+            const gridColor = isDark ? 'rgba(68, 64, 60, 0.35)' : 'rgba(231, 229, 228, 0.8)';
+
+            const labels = rawData.map(r => {
+                const t = String(r[timeCol] || '');
+                return t.includes(' ') ? t.split(' ').pop().slice(0, 5) : t;
+            });
+
+            const data1 = rawData.map(r => {
+                const n = parseNum(r[col1]);
+                return isNaN(n) ? null : Number(n.toFixed(1));
+            });
+
+            const data2 = rawData.map(r => {
+                const n = parseNum(r[col2]);
+                return isNaN(n) ? null : Number(n.toFixed(1));
+            });
+
+            if (primaryChartInstance) primaryChartInstance.destroy();
+            if (secondaryChartInstance) secondaryChartInstance.destroy();
+
+            const chartType = chartMode === 'bar' ? 'bar' : 'line';
+
+            // Primary Chart (Violet)
+            const ctx1 = document.getElementById('primaryChart').getContext('2d');
+            primaryChartInstance = new Chart(ctx1, {
+                type: chartType,
+                data: {
+                    labels,
+                    datasets: [{
+                        label: col1,
+                        data: data1,
+                        borderColor: '#7c3aed',
+                        backgroundColor: chartType === 'bar' ? 'rgba(124, 58, 237, 0.75)' : 'rgba(124, 58, 237, 0.14)',
+                        borderWidth: 2,
+                        borderRadius: 4,
+                        fill: chartType === 'line',
+                        tension: 0.35,
+                        pointRadius: rawData.length > 60 ? 0 : 2.5
+                    }]
+                },
+                options: buildChartOptions(textColor, gridColor, isDark, isMobile)
+            });
+
+            // Secondary Chart (Emerald)
+            const ctx2 = document.getElementById('secondaryChart').getContext('2d');
+            secondaryChartInstance = new Chart(ctx2, {
+                type: chartType,
+                data: {
+                    labels,
+                    datasets: [{
+                        label: col2,
+                        data: data2,
+                        borderColor: '#10b981',
+                        backgroundColor: chartType === 'bar' ? 'rgba(16, 185, 129, 0.75)' : 'rgba(16, 185, 129, 0.14)',
+                        borderWidth: 2,
+                        borderRadius: 4,
+                        fill: chartType === 'line',
+                        tension: 0.35,
+                        pointRadius: rawData.length > 60 ? 0 : 2.5
+                    }]
+                },
+                options: buildChartOptions(textColor, gridColor, isDark, isMobile)
+            });
+        }
+
+        function buildChartOptions(textColor, gridColor, isDark, isMobile) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: isDark ? '#1c1917' : '#ffffff',
+                        titleColor: isDark ? '#fafaf9' : '#1c1917',
+                        bodyColor: isDark ? '#d6d3d1' : '#44403c',
+                        borderColor: isDark ? '#292524' : '#e7e5e4',
+                        borderWidth: 1,
+                        padding: 10,
+                        cornerRadius: 10,
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(1)}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: textColor,
+                            maxTicksLimit: isMobile ? 5 : 9,
+                            font: { size: 10, family: 'JetBrains Mono, monospace' }
+                        }
+                    },
+                    y: {
+                        grid: { color: gridColor },
+                        ticks: {
+                            color: textColor,
+                            font: { size: 10, family: 'JetBrains Mono, monospace' },
+                            callback: val => Number(val).toFixed(1)
+                        }
+                    }
+                }
+            };
+        }
+
+        function filterTable() {
+            const q = document.getElementById('searchInput').value.trim().toLowerCase();
+            const fullReversed = [...rawData].reverse();
+            filteredData = !q
+                ? fullReversed
+                : fullReversed.filter(r => headers.some(h => String(r[h] || '').toLowerCase().includes(q)));
+            renderTable();
+        }
+
+        function renderTable() {
+            const thead = document.getElementById('tableHead');
+            const tbody = document.getElementById('tableBody');
+
+            thead.innerHTML = `
+                <tr>
+                    <th class="px-4 py-3 w-14 text-center whitespace-nowrap">#</th>
+                    ${headers.map(h => `<th class="px-4 py-3 whitespace-nowrap">${h}</th>`).join('')}
+                </tr>
+            `;
+
+            document.getElementById('tableSubtext').textContent = `แสดงทั้งหมด ${filteredData.length} รายการของวันนั้น`;
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="${headers.length + 1}" class="px-6 py-10 text-center text-stone-400">
+                            ไม่พบรายการข้อมูลในวันที่เลือก
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filteredData.map((row, idx) => `
+                <tr class="hover:bg-stone-50 dark:hover:bg-stone-800/50 transition-colors">
+                    <td class="px-4 py-2.5 text-center font-num text-xs text-stone-400">${idx + 1}</td>
+                    ${headers.map(h => `<td class="px-4 py-2.5 whitespace-nowrap font-num text-xs sm:text-sm">${row[h] !== undefined ? row[h] : '-'}</td>`).join('')}
+                </tr>
+            `).join('');
+        }
+
+        function exportCSV() {
+            if (filteredData.length === 0) return;
+            const csv = Papa.unparse(filteredData);
+            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `telemetry_studio_sheet2_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function openConfigModal() {
+            document.getElementById('sheetUrlInput').value = config.sheetUrl;
+            document.getElementById('sheetNameInput').value = config.sheetName;
+            const m = document.getElementById('configModal');
+            m.classList.remove('hidden');
+            m.classList.add('flex');
+        }
+
+        function closeConfigModal() {
+            const m = document.getElementById('configModal');
+            m.classList.add('hidden');
+            m.classList.remove('flex');
+        }
+
+        function saveConfigAndFetch() {
+            const urlVal = document.getElementById('sheetUrlInput').value.trim();
+            const nameVal = document.getElementById('sheetNameInput').value.trim();
+            if (urlVal) {
+                config.sheetUrl = urlVal;
+                config.sheetId = extractSheetId(urlVal);
+                document.getElementById('sidebarSheetIdLabel').textContent = `ID: ${config.sheetId.slice(0, 10)}...${config.sheetId.slice(-5)}`;
+            }
+            config.sheetName = nameVal;
+            closeConfigModal();
+            fetchSheetData();
+        }
+
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (rawData.length > 0) renderCharts();
+            }, 200);
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            fetchSheetData();
+        });
+    </script>
+</body>
+</html>
